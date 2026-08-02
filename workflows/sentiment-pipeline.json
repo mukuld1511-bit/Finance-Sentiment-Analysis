@@ -1,0 +1,399 @@
+{
+  "name": "Daily Stock Market Sentiment Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 16 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0001-4000-8000-000000000001",
+      "name": "Cron Trigger (Mon-Fri 4:30 PM EST)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        150,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.BACKEND_API_URL }}/api/health",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0002-4000-8000-000000000002",
+      "name": "Step 1: Health Check API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        350,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.BACKEND_API_URL }}/api/run_pipeline",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"tickers\": [\"AAPL\", \"NVDA\", \"TSLA\", \"MSFT\", \"AMZN\", \"GOOGL\", \"META\", \"INTC\"]\n}",
+        "options": {
+          "timeout": 180000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $vars.BACKEND_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0003-4000-8000-000000000003",
+      "name": "Step 2: Run Full Pipeline (Scrape + FinBERT + Signals)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        650,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Institutional Quant AI Report & Portfolio Allocator\nconst data = $input.first().json;\nconst signals = data.signals || [];\nconst market = data.market_summary || {};\nconst allocations = data.portfolio_allocation || {};\nconst topPick = data.top_pick || {};\nconst isHighConviction = data.is_high_conviction_alert || false;\nconst dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });\n\nconst companyNames = {\n  'AAPL': 'Apple Inc.', 'NVDA': 'NVIDIA Corporation', 'TSLA': 'Tesla, Inc.',\n  'MSFT': 'Microsoft Corporation', 'AMZN': 'Amazon.com, Inc.',\n  'GOOGL': 'Alphabet Inc. (Google)', 'META': 'Meta Platforms, Inc.', 'INTC': 'Intel Corporation'\n};\n\nconst trendArrow = (t) => t === 'IMPROVING' ? '\\u2191' : (t === 'DECLINING' ? '\\u2193' : '\\u2192');\n\nlet direction = 'NEUTRAL';\nif (market.bullish_count > market.bearish_count) direction = 'BULLISH';\nelse if (market.bearish_count > market.bullish_count) direction = 'BEARISH';\n\nconst topPickName = companyNames[topPick.ticker] || topPick.ticker || 'N/A';\n\n// Rank by conviction (confidence x |score-0.5|) instead of relying on scrape order\nconst ranked = [...signals].sort((a, b) => {\n  const convA = (a.confidence || 0) * Math.abs((a.avg_sentiment || 0.5) - 0.5);\n  const convB = (b.confidence || 0) * Math.abs((b.avg_sentiment || 0.5) - 0.5);\n  return convB - convA;\n});\nconst top3 = ranked.slice(0, 3);\n\nlet slackMsg = `*INSTITUTIONAL QUANT SENTIMENT REPORT | ${dateStr}*\\n\\n*Market Overview:*\\n\\u2022 *Regime:* \\`${market.market_regime || 'BALANCED'}\\`\\n\\u2022 *Risk Level:* \\`${market.risk_assessment || 'MODERATE'}\\`${(market.risk_assessment || '').toUpperCase() === 'HIGH' ? ' :warning:' : ''}\\n\\u2022 *Overall Sentiment Score:* \\`${market.overall_sentiment} / 1.0\\`\\n\\u2022 *Summary:* *${market.bullish_count}* Bullish  |  *${market.bearish_count}* Bearish  |  *${market.neutral_count}* Neutral\\n\\n*TOP PICK OF THE DAY:*\\n\\u2022 *${topPickName} (${topPick.ticker})* -> Signal: *${topPick.signal}* | AI Certainty: *${topPick.confidence_pct}%* | Score: *${topPick.score}*\\n\\n*\\u2500\\u2500\\u2500\\u2500\\u2500 TOP 3 HIGH-CONVICTION MOVERS \\u2500\\u2500\\u2500\\u2500\\u2500*\\n`;\n\ntop3.forEach((s, i) => {\n  const fullName = companyNames[s.ticker] || s.ticker;\n  slackMsg += `${i + 1}. *${fullName} (${s.ticker})* ${trendArrow(s.trend)} \\u2014 *${s.signal}* | Conf: *${(s.confidence * 100).toFixed(0)}%*\\n`;\n});\n\nslackMsg += `\\n*\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500 FULL PORTFOLIO & TICKER BREAKDOWN \\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500\\u2500*\\n`;\n\nsignals.forEach(s => {\n  const fullName = companyNames[s.ticker] || s.ticker;\n  let tag = 'HOLD';\n  if (s.signal === 'STRONG_BUY') tag = 'STRONG BUY';\n  else if (s.signal === 'BUY') tag = 'BUY';\n  else if (s.signal === 'STRONG_SELL') tag = 'STRONG SELL';\n  else if (s.signal === 'SELL') tag = 'SELL';\n\n  const weight = allocations[s.ticker] || '0%';\n  const pct = s.predicted_change_pct >= 0 ? `+${s.predicted_change_pct}%` : `${s.predicted_change_pct}%`;\n  slackMsg += `\\n*${fullName} (${s.ticker})* ${trendArrow(s.trend)}\\n\\u00bb *Signal:* ${tag} | *24h Est:* \\`${pct}\\` | *Weight:* \\`${weight}\\` | *Confidence:* \\`${(s.confidence * 100).toFixed(0)}%\\` (${s.num_articles} articles)\\n`;\n});\n\nslackMsg += `\\n*Quant Strategy Tip:* _Portfolio Weight % recommends Kelly-criterion allocation based on AI sentiment confidence._\\n_FinBERT Pipeline \\u2022 Processed ${data.articles_scraped} news in ${data.pipeline_execution_time_sec}s_`;\n\nlet urgentMsg = `*URGENT HIGH-CONVICTION TRADING ALERT | ${dateStr}*\\nTop Opportunity Detected: *${topPickName} (${topPick.ticker})*\\nSignal: *${topPick.signal}* | AI Confidence: *${topPick.confidence_pct}%*\\nRecommended Action: Immediate review of long/short position.`;\n\nreturn [{\n  json: {\n    slack_message: slackMsg,\n    urgent_message: urgentMsg,\n    is_high_conviction: isHighConviction,\n    market_direction: direction,\n    overall_sentiment: market.overall_sentiment,\n    top_pick_ticker: topPick.ticker,\n    top_pick_signal: topPick.signal,\n    top3_tickers: top3.map(s => s.ticker)\n  }\n}];"
+      },
+      "id": "1a2b3c4d-0004-4000-8000-000000000004",
+      "name": "Step 3: Process & Compute Quant Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        750,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.BACKEND_API_URL }}/api/internal/subscribers",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Subscriber-Secret",
+              "value": "={{ $vars.N8N_SUBSCRIBER_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "1a2b3c4d-0009-4000-8000-000000000009",
+      "name": "Step 3A: Fetch Signal Subscribers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "position": [
+        950,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $('Step 3: Process & Compute Quant Metrics').first().json;\nconst subscribers = $input.first().json.subscribers || [];\nconst subscriber_emails = [...new Set(subscribers.map(({ email }) => email).filter(Boolean))];\nreturn [{ json: { ...report, subscriber_emails, subscriber_count: subscriber_emails.length } }];"
+      },
+      "id": "1a2b3c4d-0010-4000-8000-000000000010",
+      "name": "Step 3B: Attach Subscriber Recipients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_high_conviction }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0005-4000-8000-000000000005",
+      "name": "Step 4: IF High Conviction Opportunity?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        950,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.urgent_message } }}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0006-4000-8000-000000000006",
+      "name": "Branch A: Send URGENT High-Conviction Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.slack_message } }}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0007-4000-8000-000000000007",
+      "name": "Branch B: Post Daily Summary Report (Slack)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $('Step 3B: Attach Subscriber Recipients').first().json.subscriber_count > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0011-4000-8000-000000000011",
+      "name": "Step 5: Email Recipients Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@estime-signals.com",
+        "toEmail": "={{ $('Step 3B: Attach Subscriber Recipients').first().json.subscriber_emails.join(',') }}",
+        "subject": "Daily Stock Market Sentiment Report - {{ $now.format('yyyy-MM-dd') }}",
+        "html": "={{ '<h2>Daily Market Signal Report</h2><p style=\"white-space:pre-line\">' + $('Step 3B: Attach Subscriber Recipients').first().json.slack_message + '</p>' }}"
+      },
+      "id": "1a2b3c4d-0008-4000-8000-000000000008",
+      "name": "Email Dispatcher Node",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "healthy"
+            }
+          ]
+        }
+      },
+      "id": "3317aa7c-a9ac-47b4-9ad8-2206f88a22de",
+      "name": "Step 1B: Backend Healthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": \":rotating_light: *Sentiment pipeline skipped* — backend health check failed at \" + $now.format('yyyy-MM-dd HH:mm') + \". Check that the local FastAPI server and Cloudflare Tunnel are running.\" } }}",
+        "options": {}
+      },
+      "id": "24b20506-cd34-4414-8acc-1c180d700b80",
+      "name": "Alert: Backend Unreachable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        450,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Mon-Fri 4:30 PM EST)": {
+      "main": [
+        [
+          {
+            "node": "Step 1: Health Check API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 1: Health Check API": {
+      "main": [
+        [
+          {
+            "node": "Step 1B: Backend Healthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3: Process & Compute Quant Metrics": {
+      "main": [
+        [
+          {
+            "node": "Step 3A: Fetch Signal Subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3A: Fetch Signal Subscribers": {
+      "main": [
+        [
+          {
+            "node": "Step 3B: Attach Subscriber Recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3B: Attach Subscriber Recipients": {
+      "main": [
+        [
+          {
+            "node": "Step 4: IF High Conviction Opportunity?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 4: IF High Conviction Opportunity?": {
+      "main": [
+        [
+          {
+            "node": "Branch A: Send URGENT High-Conviction Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Branch B: Post Daily Summary Report (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Branch A: Send URGENT High-Conviction Alert": {
+      "main": [
+        [
+          {
+            "node": "Step 5: Email Recipients Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Branch B: Post Daily Summary Report (Slack)": {
+      "main": [
+        [
+          {
+            "node": "Step 5: Email Recipients Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 5: Email Recipients Available?": {
+      "main": [
+        [
+          {
+            "node": "Email Dispatcher Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 1B: Backend Healthy?": {
+      "main": [
+        [
+          {
+            "node": "Step 2: Run Full Pipeline (Scrape + FinBERT + Signals)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert: Backend Unreachable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 2: Run Full Pipeline (Scrape + FinBERT + Signals)": {
+      "main": [
+        [
+          {
+            "node": "Step 3: Process & Compute Quant Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "notes": "PRODUCTION WORKFLOW - USE N8N VARIABLES (Settings -> Variables)\nAccessed in this workflow as $vars.NAME (NOT $env.NAME - $env is blocked in n8n expressions by default).\n\nREQUIRED N8N VARIABLES:\n1. BACKEND_API_URL = https://your-cloudflare-tunnel-url (no trailing slash)\n2. BACKEND_API_KEY = (only needed if REQUIRE_API_KEY=true on the backend, else leave blank)\n3. SLACK_WEBHOOK_URL = your Slack incoming webhook (rotate any previously-committed webhook immediately)\n4. N8N_SUBSCRIBER_WEBHOOK_SECRET = a long random secret, must match backend's env var of the same name\n\nCron Schedule: 30 16 * * 1-5 (Mon-Fri 4:30 PM EST) - edit the Cron node to change.\n\nWorkflow Flow:\n1. Health Check -> /api/health\n2. IF unhealthy -> Slack alert + stop (no wasted scrape/FinBERT run on a dead backend)\n3. Run Full Pipeline -> /api/run_pipeline (scrape + FinBERT + DB + signals, ~1-3 min on CPU)\n4. Process Metrics -> ranks tickers by conviction, builds Top-3 movers + full breakdown\n5. Fetch Subscribers -> /api/internal/subscribers (secret header)\n6. Branch A: High Conviction -> Urgent Slack alert\n   Branch B: Otherwise -> Daily summary Slack message\n7. Email Dispatch -> HTML email to all subscribers\n"
+}

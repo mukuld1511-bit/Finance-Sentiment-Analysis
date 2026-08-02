@@ -1,0 +1,554 @@
+================================================================================
+🎯 GEMMA 4 MASTER PROMPT - COPY & PASTE THIS ENTIRE TEXT
+Generate Complete Stock Market Sentiment Analysis Code
+================================================================================
+
+COPY EVERYTHING BELOW THIS LINE AND PASTE INTO GEMMA 4
+
+================================================================================
+
+Generate COMPLETE production-ready code for Stock Market Sentiment Analysis.
+
+PROJECT REQUIREMENTS:
+- Goal: Predict stock price from financial news sentiment
+- Timeline: 2.5 days
+- Deployment: Self-hosted (FastAPI backend) + Streamlit frontend
+- Automation: n8n daily pipeline
+- Database: PostgreSQL (self-hosted)
+- Interview: US tech company ready
+
+DELIVERABLES: 8 COMPLETE FILES
+
+================================================================================
+FILE 1: news_collector.py
+================================================================================
+
+Create a Python file named: news_collector.py
+
+Requirements:
+1. NewsCollector class
+   - __init__() constructor
+   - scrape_reuters() - Scrape from Reuters finance
+   - scrape_bloomberg() - Scrape from Bloomberg
+   - scrape_cnbc() - Scrape from CNBC
+   - scrape_marketwatch() - Scrape from MarketWatch
+   - scrape_yahoo_finance() - Scrape from Yahoo Finance
+   - scrape_tradingview() - Scrape from TradingView
+   - combine_and_deduplicate() - Merge results, remove duplicates
+   - get_articles() -> List[Dict]
+
+2. Each article dict contains:
+   {
+     "url": str (unique),
+     "title": str,
+     "body": str (first 3 paragraphs),
+     "source": str (Reuters, Bloomberg, etc),
+     "ticker": str (AAPL, TSLA, etc),
+     "published_at": datetime,
+     "fetched_at": datetime
+   }
+
+3. Features:
+   - Filter: Only today's articles
+   - Error handling: Retry on connection failure (3x exponential backoff)
+   - Rate limiting: Respect source rate limits
+   - Deduplication: Same article from multiple sources = stored once
+   - Logging: DEBUG, INFO, ERROR levels
+
+4. Return:
+   - List of article dicts (JSON serializable)
+   - Ready for sentiment analysis
+
+Code Requirements:
+- Type hints throughout (Python 3.10+)
+- Docstrings for all methods
+- Error handling with try/except
+- Logging with Python logging module
+- No external APIs needed (scrape from web only)
+- Timeout: 30s max per source
+
+Output: Complete, working news_collector.py file
+
+================================================================================
+FILE 2: sentiment_analyzer.py
+================================================================================
+
+Create a Python file named: sentiment_analyzer.py
+
+Requirements:
+1. SentimentAnalyzer class
+   - __init__() - Load FinBERT model
+   - analyze_single(text: str) -> Dict
+   - analyze_batch(texts: List[str]) -> List[Dict]
+   - analyze_article(article: Dict) -> Dict
+
+2. Model: FinBERT (ProsusAI/finbert from HuggingFace)
+   - Load on init
+   - Use GPU if available, fallback to CPU
+   - Cache model to avoid reloading
+
+3. Output format for each prediction:
+   {
+     "text": str,
+     "sentiment_label": str ("POSITIVE" / "NEGATIVE" / "NEUTRAL"),
+     "sentiment_score": float (0-1),
+     "confidence": float (0-1),
+     "probabilities": {
+       "POSITIVE": float,
+       "NEGATIVE": float,
+       "NEUTRAL": float
+     },
+     "processing_time_ms": int
+   }
+
+4. Batch processing:
+   - Process 50-100 texts simultaneously
+   - Use model.pipeline for efficiency
+   - Return array of results
+
+5. Article analysis:
+   - Extract title + body
+   - Run sentiment on title separately
+   - Run sentiment on each paragraph
+   - Weighted average (title = 40%, body = 60%)
+   - Return combined sentiment
+
+6. Optimization:
+   - Batch inference (not one-at-a-time)
+   - GPU acceleration if available
+   - Cache model weights
+   - Timeout: 30s max
+
+Code Requirements:
+- Import: transformers, torch
+- Type hints throughout
+- Docstrings for all methods
+- Error handling
+- Logging
+
+Output: Complete, working sentiment_analyzer.py file
+
+================================================================================
+FILE 3: app.py
+================================================================================
+
+Create a Python file named: app.py (FastAPI backend)
+
+Requirements:
+1. FastAPI application with 8 endpoints:
+
+   A) GET /health
+      - Returns: {status: "healthy", uptime_seconds, tweets_processed_today}
+
+   B) GET /current_sentiment
+      - Returns: {
+          market_sentiment: float (0-1),
+          num_bullish: int,
+          num_bearish: int,
+          market_direction: str (BULLISH/BEARISH/NEUTRAL),
+          last_updated: datetime
+        }
+
+   C) GET /stock_sentiment?ticker=AAPL
+      - Input: ticker symbol (AAPL, TSLA, etc)
+      - Returns: {
+          ticker: str,
+          sentiment_score: float,
+          confidence: float,
+          signal: str (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL),
+          trend: str (IMPROVING/STABLE/DECLINING),
+          num_articles: int,
+          articles_summary: str
+        }
+
+   D) GET /sentiment_history?ticker=AAPL&days=7
+      - Input: ticker, number of days
+      - Returns: List of daily aggregates (for charts)
+        [{date, sentiment, num_articles, signal}, ...]
+
+   E) GET /top_signals?limit=10&type=BUY
+      - Input: limit (how many), type (BUY/SELL)
+      - Returns: Top N stocks sorted by confidence
+
+   F) POST /analyze_text
+      - Input: {text: str}
+      - Returns: {sentiment_label, confidence, probabilities}
+
+   G) POST /webhook/articles
+      - Input: List of article dicts from n8n
+      - Process: Run sentiment analysis
+      - Store: In PostgreSQL
+      - Returns: {processed: int, stored: int}
+
+   H) GET /backtesting_results
+      - Returns: Historical performance metrics
+        {accuracy, precision, sharpe_ratio, max_drawdown}
+
+2. Database integration:
+   - Use SQLAlchemy ORM
+   - Connect to PostgreSQL
+   - Connection pooling
+   - Tables: articles, sentiment_scores, daily_aggregates, trading_signals
+
+3. Background tasks:
+   - Every hour: Calculate daily aggregates
+   - Every 30 min: Check for new high-confidence signals
+
+4. Middleware:
+   - CORS: Allow Streamlit + n8n origins
+   - Authentication: API key validation
+   - Logging: Request/response logging
+
+5. Error handling:
+   - Try/catch on all endpoints
+   - Return proper HTTP codes (200, 400, 500)
+   - Log all errors
+
+Code Requirements:
+- Framework: FastAPI
+- Database: SQLAlchemy + PostgreSQL
+- Type hints throughout
+- Docstrings
+- Error handling
+- Logging
+
+Output: Complete, working app.py file (+ models.py if needed for Pydantic models)
+
+================================================================================
+FILE 4: dashboard.py
+================================================================================
+
+Create a Python file named: dashboard.py (Streamlit dashboard)
+
+Requirements:
+1. Layout:
+   - Header: Title + refresh button + last updated time
+   - KPI row: Market sentiment gauge, % bullish, % bearish, BUY count, SELL count
+
+2. Charts:
+   - Chart 1: 24-hour sentiment trend (line chart)
+   - Chart 2: Sentiment distribution (pie: POS/NEU/NEG)
+   - Chart 3: Top sectors by sentiment (bar chart)
+   - Chart 4: Sentiment vs price (scatter, if data available)
+
+3. Tables:
+   - Table 1: Top BUY signals (ticker, sentiment, confidence, trend)
+   - Table 2: Top SELL signals (same)
+   - Table 3: Articles (title, source, sentiment, engagement)
+
+4. Interactivity:
+   - Date range selector (24h, 7d, 30d)
+   - Sector filter dropdown
+   - Sentiment threshold slider
+   - Search by ticker
+
+5. Real-time updates:
+   - Auto-refresh every 30 seconds
+   - Use st.session_state for caching
+   - Show loading indicator during updates
+
+6. Styling:
+   - Color-coded: Green (positive), Red (negative), Yellow (neutral)
+   - Responsive design (mobile-friendly)
+   - Professional appearance
+
+Code Requirements:
+- Framework: Streamlit
+- Charts: Plotly (interactive)
+- API calls: requests library
+- Caching: @st.cache_data
+- Type hints
+
+Output: Complete, working dashboard.py file
+
+================================================================================
+FILE 5: schema.sql
+================================================================================
+
+Create a SQL file named: schema.sql (PostgreSQL schema)
+
+Requirements:
+1. Table: articles
+   Columns: id (UUID PK), url (VARCHAR unique), title, body, source, ticker, 
+            published_at, fetched_at, created_at
+   Indexes: url, ticker, published_at
+
+2. Table: sentiment_scores
+   Columns: id (UUID PK), article_id (FK), sentiment_label (ENUM), 
+            sentiment_score (FLOAT), confidence (FLOAT), probabilities (JSONB),
+            processing_time_ms (INT), created_at
+   Indexes: article_id, sentiment_label
+
+3. Table: daily_aggregates
+   Columns: id (UUID PK), date (DATE), ticker, avg_sentiment (FLOAT),
+            positive_count (INT), negative_count (INT), neutral_count (INT),
+            total_articles (INT), signal (VARCHAR), trend (VARCHAR), created_at
+   Indexes: date, ticker
+
+4. Table: trading_signals
+   Columns: id (UUID PK), date (DATE), ticker, signal_type (VARCHAR),
+            sentiment_score (FLOAT), confidence (FLOAT), num_articles (INT),
+            price_prediction (VARCHAR), created_at
+   Indexes: date, ticker, signal_type
+
+5. Views:
+   - recent_signals: Today's signals
+   - market_overview: Overall market stats
+   - performance_backtest: Historical metrics
+
+Code Requirements:
+- DROP IF EXISTS before CREATE (safe for re-runs)
+- Proper constraints and keys
+- Comments on all columns
+- Optimized indexes
+- Sample insert statements (commented)
+
+Output: Complete, working schema.sql file
+
+================================================================================
+FILE 6: Dockerfile
+================================================================================
+
+Create a file named: Dockerfile (Docker container)
+
+Requirements:
+1. Base image: python:3.10-slim
+
+2. Working directory: /app
+
+3. Copy files:
+   - Copy requirements.txt
+   - Copy source code
+
+4. Install dependencies:
+   - pip install -r requirements.txt
+   - Includes: torch, transformers, fastapi, sqlalchemy, psycopg2, etc
+
+5. Expose port: 8000
+
+6. Health check:
+   - Endpoint: /health
+   - Interval: 30s
+   - Timeout: 10s
+
+7. Start command:
+   - CMD: uvicorn app:app --host 0.0.0.0 --port 8000
+
+8. Optimization:
+   - Multi-stage build (if needed)
+   - Minimize layer size
+   - Non-root user (optional)
+
+Code Requirements:
+- Proper formatting
+- Comments explaining each step
+- Error handling
+
+Output: Complete, working Dockerfile
+
+================================================================================
+FILE 7: docker-compose.yml
+================================================================================
+
+Create a file named: docker-compose.yml (Orchestration)
+
+Requirements:
+1. Version: '3.8'
+
+2. Services:
+
+   A) fastapi-sentiment
+      - Build: from ./Dockerfile
+      - Ports: 8000:8000
+      - Volumes: ./models, ./data
+      - Environment: DATABASE_URL, LOG_LEVEL, API_KEY
+      - Restart: always
+      - Depends_on: postgres
+      - Health check: /health endpoint
+
+   B) postgres:15
+      - Ports: 5432:5432
+      - Volume: postgres_data:/var/lib/postgresql/data
+      - Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+      - Restart: always
+
+   C) n8n:latest (optional, for workflow)
+      - Ports: 5678:5678
+      - Volume: n8n_data:/home/node/.n8n
+      - Environment: N8N_HOST, DATABASE_URL
+      - Restart: always
+
+3. Volumes:
+   - postgres_data: PostgreSQL persistence
+   - n8n_data: n8n workflows
+   - models: BERT model cache
+
+4. Networks:
+   - Create custom bridge network
+
+Code Requirements:
+- All services on same network
+- Proper dependency ordering
+- Comments explaining each service
+
+Output: Complete, working docker-compose.yml
+
+================================================================================
+FILE 8: workflows/sentiment-pipeline.json
+================================================================================
+
+Create a file named: workflows/sentiment-pipeline.json (n8n workflow)
+
+Requirements:
+This is an n8n workflow (JSON format). It automates the daily pipeline:
+
+1. Trigger:
+   - Cron: Every weekday at 4:30 PM (US/Eastern)
+   - "0 16:30 * * MON-FRI"
+
+2. Steps:
+
+   Step 1: News Scraper
+   - Node type: HTTP Request
+   - Method: GET
+   - URL: (local news scraper endpoint)
+   - Output: Array of articles
+
+   Step 2: Sentiment Analyzer (Batch)
+   - Node type: HTTP Request
+   - URL: (FastAPI /webhook/articles endpoint)
+   - Input: Articles array
+   - Output: Processed articles with sentiment
+
+   Step 3: Store in Database
+   - Node type: PostgreSQL
+   - Query: INSERT into articles + sentiment_scores tables
+   - Data: Full processed articles
+
+   Step 4: Calculate Aggregates
+   - Node type: Function
+   - Group by ticker
+   - Calculate: avg_sentiment, confidence, signal
+   - Output: Daily aggregates
+
+   Step 5: Generate Signals
+   - Node type: Function
+   - Apply rules: sentiment → BUY/SELL/HOLD
+   - Apply confidence thresholds
+   - Output: Trading signals
+
+   Step 6: Insert Signals
+   - Node type: PostgreSQL
+   - Query: INSERT into trading_signals table
+
+   Step 7: Email Report
+   - Node type: Send Email
+   - To: traders@company.com
+   - Subject: "Daily Stock Sentiment Report - [DATE]"
+   - Body: HTML with signals + charts
+
+   Step 8: Slack Alert
+   - Node type: Slack Chat Message
+   - Channel: #trading
+   - Message: Top BUY/SELL signals with emoji
+
+   Step 9: Error Handling
+   - Retry on failure (3x with exponential backoff)
+   - Log all errors
+
+3. Error handling:
+   - IF step fails: Retry logic
+   - IF all retries fail: Alert admin
+
+Code Requirements:
+- Valid n8n JSON format
+- All nodes properly connected
+- All variables parameterized
+- Ready to import into n8n UI
+
+Output: Complete, working sentiment-pipeline.json (n8n workflow)
+
+================================================================================
+REQUIREMENTS.TXT
+================================================================================
+
+Create a file named: requirements.txt
+
+Include:
+```
+torch==2.0.0
+transformers==4.30.0
+fastapi==0.104.0
+uvicorn==0.24.0
+sqlalchemy==2.0.0
+psycopg2-binary==2.9.9
+pandas==2.1.0
+numpy==1.24.0
+requests==2.31.0
+beautifulsoup4==4.12.0
+python-dotenv==1.0.0
+pydantic==2.0.0
+streamlit==1.28.0
+plotly==5.18.0
+```
+
+================================================================================
+.ENV.EXAMPLE
+================================================================================
+
+Create a file named: .env.example
+
+Include:
+```
+# Database
+DATABASE_URL=postgresql://postgres:password@localhost:5432/sentiment
+
+# API
+API_KEY=your-secret-key-here
+LOG_LEVEL=INFO
+
+# News Scraping
+NEWS_SOURCES=reuters,bloomberg,cnbc,marketwatch,yahoo,tradingview
+
+# Models
+FINBERT_MODEL_CACHE=/app/models
+USE_GPU=true
+
+# N8N
+N8N_HOST=http://localhost:5678
+N8N_API_KEY=n8n-api-key
+
+# Email/Slack (optional)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/...
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_EMAIL=your@email.com
+SMTP_PASSWORD=your-password
+```
+
+================================================================================
+COMPLETE ALL 8 FILES NOW
+================================================================================
+
+Generate:
+1. news_collector.py - Complete, working code
+2. sentiment_analyzer.py - Complete, working code
+3. app.py - Complete, working code
+4. dashboard.py - Complete, working code
+5. schema.sql - Complete, working code
+6. Dockerfile - Complete, working code
+7. docker-compose.yml - Complete, working code
+8. workflows/sentiment-pipeline.json - Complete, working code
++ requirements.txt
++ .env.example
+
+ALL FILES MUST BE:
+- Production-ready
+- Fully documented
+- Type hints throughout
+- Error handling included
+- Ready to deploy
+
+GENERATE NOW
+
+================================================================================

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estime — Ops Console</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --ink: #0f172a;
+    --ink-soft: #334155;
+    --ink-faint: #64748b;
+    --line: #e2e8f0;
+    --emerald: #059669;
+    --emerald-bg: #ecfdf5;
+    --rose: #e11d48;
+    --rose-bg: #fff1f2;
+    --amber: #d97706;
+    --amber-bg: #fffbeb;
+    --indigo: #6366f1;
+    --font-display: 'Inter', 'Google Sans Display', -apple-system, sans-serif;
+    --font-body: 'Inter', 'Google Sans Text', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-body);
+    color: var(--ink);
+    background:
+      radial-gradient(circle at 10% 12%, rgba(129,140,248,.20), transparent 30rem),
+      radial-gradient(circle at 90% 20%, rgba(45,212,191,.16), transparent 28rem),
+      radial-gradient(circle at 50% 100%, rgba(251,191,36,.13), transparent 34rem),
+      #f8fafc;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 36px 24px 70px; }
+
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 14px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, #6366f1, #2dd4bf); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; color: white; font-size: 16px; }
+  .brand-name { font-family: var(--font-display); font-weight: 800; font-size: 19px; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 12px; color: var(--ink-faint); margin-top: 1px; }
+  .live-pill { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; padding: 8px 14px; border-radius: 100px; background: rgba(255,255,255,.85); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(15,23,42,.05); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint); }
+  .dot.ok { background: var(--emerald); animation: pulse 2s infinite; }
+  .dot.err { background: var(--rose); }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(5,150,105,.5)} 70%{box-shadow:0 0 0 7px rgba(5,150,105,0)} 100%{box-shadow:0 0 0 0 rgba(5,150,105,0)} }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+  .toolbar input { flex: 1; min-width: 260px; background: white; border: 1px solid var(--line); border-radius: 10px; padding: 11px 14px; font-family: var(--font-mono); font-size: 13px; color: var(--ink); outline: none; }
+  .toolbar input:focus { border-color: var(--indigo); }
+  .btn { font-family: var(--font-body); font-weight: 600; font-size: 13px; padding: 11px 18px; border-radius: 10px; border: 1px solid transparent; background: var(--ink); color: white; cursor: pointer; }
+  .btn:hover { background: #1e293b; }
+  .btn.ghost { background: white; border-color: var(--line); color: var(--ink-soft); }
+  .btn.ghost.active { border-color: var(--indigo); color: var(--indigo); }
+  .btn.link { background: white; border-color: var(--line); color: var(--ink-soft); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+
+  .surface { background: rgba(255,255,255,.85); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px rgba(15,23,42,.06); padding: 22px; margin-bottom: 20px; }
+  .section-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title .eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+
+  .snapshot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .snap-card { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .snap-label { font-size: 11px; color: var(--ink-faint); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .snap-value { font-family: var(--font-display); font-weight: 800; font-size: 22px; }
+  .snap-value.up { color: var(--emerald); }
+  .snap-value.down { color: var(--rose); }
+
+  .signal-list { display: flex; flex-direction: column; gap: 8px; }
+  .signal-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 10px; background: white; border: 1px solid var(--line); }
+  .signal-ticker { font-family: var(--font-mono); font-weight: 700; font-size: 13px; min-width: 58px; }
+  .signal-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 6px; letter-spacing: .03em; }
+  .signal-tag.buy { color: var(--emerald); background: var(--emerald-bg); }
+  .signal-tag.sell { color: var(--rose); background: var(--rose-bg); }
+  .signal-tag.hold { color: var(--amber); background: var(--amber-bg); }
+  .signal-conf { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); margin-left: auto; }
+  .empty-note { color: var(--ink-faint); font-size: 13px; padding: 8px 2px; }
+
+  .check { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; overflow: hidden; background: white; }
+  .check-head { display: flex; align-items: center; gap: 12px; padding: 13px 15px; cursor: pointer; }
+  .badge { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 4px 9px; border-radius: 6px; min-width: 60px; text-align: center; flex-shrink: 0; }
+  .badge.pending { background: #f1f5f9; color: var(--ink-faint); }
+  .badge.checking { background: #eef2ff; color: var(--indigo); }
+  .badge.pass { background: var(--emerald-bg); color: var(--emerald); }
+  .badge.fail { background: var(--rose-bg); color: var(--rose); }
+  .check-title { font-weight: 600; font-size: 13.5px; flex-shrink: 0; }
+  .check-path { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .check-latency { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
+  .chevron { color: var(--ink-faint); font-size: 11px; transition: transform .2s; flex-shrink: 0; }
+  .check.open .chevron { transform: rotate(90deg); }
+  .check-body { display: none; padding: 0 15px 15px; border-top: 1px solid var(--line); }
+  .check.open .check-body { display: block; }
+  .check-what { font-size: 12.5px; color: var(--ink-soft); padding: 11px 0 9px; line-height: 1.5; }
+  .check-details { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; color: var(--ink-soft); max-height: 200px; overflow: auto; }
+  .kv { display: flex; gap: 10px; }
+  .kv .k { color: var(--ink-faint); min-width: 150px; flex-shrink: 0; }
+  .kv .v { color: var(--ink); word-break: break-word; }
+  .kv .v.ok { color: var(--emerald); }
+  .kv .v.err { color: var(--rose); }
+  .err-msg { color: var(--rose); font-family: var(--font-mono); font-size: 12px; padding: 8px 0 0; }
+
+  .links-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  footer { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); margin-top: 24px; }
+
+  @media (max-width: 720px) {
+    .snapshot-grid { grid-template-columns: repeat(2, 1fr); }
+    .links-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="brand-mark">E</div>
+      <div>
+        <div class="brand-name">Estime</div>
+        <div class="brand-sub">Ops Console · Master Control</div>
+      </div>
+    </div>
+    <div class="live-pill">
+      <span class="dot" id="overallDot"></span>
+      <span id="overallText">Not checked yet</span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <input id="baseUrl" type="text" value="https://aliens-evaluate-suffocate.ngrok-free.dev" placeholder="Backend URL" spellcheck="false">
+    <button class="btn" onclick="runAll()">Refresh everything</button>
+    <button class="btn ghost" id="autoBtn" onclick="toggleAuto()">Auto-refresh: off</button>
+  </div>
+
+  <div class="surface">
+    <div class="section-title">
+      <span>Live Market Snapshot</span>
+      <span class="eyebrow" id="snapUpdated">—</span>
+    </div>
+    <div class="snapshot-grid">
+      <div class="snap-card"><div class="snap-label">Market Regime</div><div class="snap-value" id="snapRegime">—</div></div>
+      <div class="snap-card"><div class="snap-label">Overall Sentiment</div><div class="snap-value" id="snapSentiment">—</div></div>
+      <div class="snap-card"><div class="snap-label">Bullish / Bearish</div><div class="snap-value" id="snapCounts">—</div></div>
+      <div class="snap-card"><div class="snap-label">Risk Level</div><div class="snap-value" id="snapRisk">—</div></div>
+    </div>
+    <div class="section-title" style="margin-bottom:8px;"><span style="font-size:13px;">Top Signals</span></div>
+    <div class="signal-list" id="signalList"><div class="empty-note">Run a refresh to load live signals.</div></div>
+  </div>
+
+  <div class="surface">
+    <div class="section-title">
+      <span>Subscriber Logs</span>
+      <span class="eyebrow" id="subCount">—</span>
+    </div>
+    <div class="toolbar" style="margin-bottom:14px;">
+      <input id="subSecret" type="password" placeholder="N8N_SUBSCRIBER_WEBHOOK_SECRET (from your .env)" spellcheck="false">
+      <button class="btn ghost" onclick="loadSubscribers()">Load subscribers</button>
+    </div>
+    <div class="signal-list" id="subList"><div class="empty-note">Enter the subscriber secret above and click Load — this reads directly from your backend, nothing is stored here.</div></div>
+  </div>
+
+  <div class="surface">
+    <div class="section-title"><span>System Health</span></div>
+    <div id="group-core"></div>
+    <div id="group-data"></div>
+    <div id="group-model"></div>
+  </div>
+
+  <div class="surface">
+    <div class="section-title"><span>Quick Links</span></div>
+    <div class="links-grid">
+      <a class="btn link" href="#" id="linkSite" target="_blank">Open live site (Vercel)</a>
+      <a class="btn link" href="http://localhost:5678" target="_blank">Open n8n</a>
+      <a class="btn link" href="#" id="linkDocs" target="_blank">Open API docs (Swagger)</a>
+    </div>
+  </div>
+
+  <footer>Runs entirely in your browser — talks directly to the backend URL above. Nothing is sent anywhere else.</footer>
+</div>
+
+<script>
+document.getElementById('linkSite').href = 'https://finance-sentiment-analysis-f852e1f0j-mukuld1511-7564s-projects.vercel.app/';
+
+const CHECKS = [
+  { id: 'health', group: 'core', title: 'Health', method: 'GET', path: '/api/health',
+    what: 'Confirms the FastAPI server is up and can reach its database.',
+    parse: (d) => ([['status', d.status, d.status === 'healthy' ? 'ok' : 'err'], ['database', d.database], ['uptime_seconds', d.uptime_seconds]]) },
+  { id: 'sentiment', group: 'data', title: 'Current Sentiment', method: 'GET', path: '/api/current_sentiment',
+    what: 'Checks the aggregated market sentiment endpoint the frontend dashboard reads on load.',
+    parse: (d) => ([['overall_sentiment', d.overall_sentiment ?? d.market_regime ?? JSON.stringify(d).slice(0,60)]]) },
+  { id: 'signals', group: 'data', title: 'Top Signals (BUY)', method: 'GET', path: '/api/top_signals?type=BUY',
+    what: 'Checks the trading-signal engine returns ranked BUY signals.',
+    parse: (d) => { const arr = Array.isArray(d) ? d : (d.signals || []); return [['signals returned', arr.length]]; } },
+  { id: 'backtest', group: 'data', title: 'Backtesting Results', method: 'GET', path: '/api/backtesting_results',
+    what: 'Checks the historical performance / backtesting analytics endpoint.',
+    parse: (d) => ([['keys returned', Object.keys(d || {}).join(', ').slice(0,80) || 'n/a']]) },
+  { id: 'analyze', group: 'model', title: 'FinBERT Direct Test', method: 'POST', path: '/api/analyze_text',
+    what: 'Sends a sample positive financial sentence directly to FinBERT and checks it classifies correctly.',
+    body: { text: 'The company reported record profit and strong revenue growth this quarter.' },
+    parse: (d) => ([['sentiment_label', d.sentiment_label ?? d.label, (d.sentiment_label ?? d.label ?? '').toString().toUpperCase().includes('POS') ? 'ok' : 'warn'], ['confidence', d.confidence ?? d.score]]) },
+];
+
+let autoTimer = null;
+
+function renderSkeleton() {
+  const groups = { core: document.getElementById('group-core'), data: document.getElementById('group-data'), model: document.getElementById('group-model') };
+  Object.values(groups).forEach(g => g.innerHTML = '');
+  CHECKS.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'check';
+    el.id = 'check-' + c.id;
+    el.innerHTML = `
+      <div class="check-head" onclick="document.getElementById('check-${c.id}').classList.toggle('open')">
+        <span class="badge pending" id="badge-${c.id}">PENDING</span>
+        <span class="check-title">${c.title}</span>
+        <span class="check-path">${c.method} ${c.path}</span>
+        <span class="check-latency" id="latency-${c.id}"></span>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="check-body">
+        <div class="check-what">${c.what}</div>
+        <div class="check-details" id="details-${c.id}">Not run yet.</div>
+      </div>`;
+    groups[c.group].appendChild(el);
+  });
+}
+
+function kvRows(rows) {
+  return rows.map(([k, v, cls]) => `<div class="kv"><span class="k">${k}</span><span class="v ${cls||''}">${v === undefined || v === null ? '—' : v}</span></div>`).join('');
+}
+
+async function runCheck(c, baseUrl) {
+  const badge = document.getElementById('badge-' + c.id);
+  const latencyEl = document.getElementById('latency-' + c.id);
+  const detailsEl = document.getElementById('details-' + c.id);
+  badge.className = 'badge checking'; badge.textContent = 'CHECKING';
+  const start = performance.now();
+  try {
+    const opts = { method: c.method, headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' } };
+    if (c.body) opts.body = JSON.stringify(c.body);
+    const resp = await fetch(baseUrl.replace(/\/$/, '') + c.path, opts);
+    const latency = Math.round(performance.now() - start);
+    latencyEl.textContent = latency + 'ms';
+    let data = {};
+    try { data = await resp.json(); } catch (e) {}
+    if (!resp.ok) {
+      badge.className = 'badge fail'; badge.textContent = 'FAIL ' + resp.status;
+      detailsEl.innerHTML = `<div class="err-msg">HTTP ${resp.status} ${resp.statusText}</div>` + kvRows([['raw response', JSON.stringify(data).slice(0,200)]]);
+      return { ok: false, latency, data };
+    }
+    const rows = c.parse(data);
+    const anyErr = rows.some(r => r[2] === 'err');
+    badge.className = 'badge ' + (anyErr ? 'fail' : 'pass'); badge.textContent = anyErr ? 'FAIL' : 'PASS';
+    detailsEl.innerHTML = kvRows(rows);
+    return { ok: !anyErr, latency, data };
+  } catch (err) {
+    const latency = Math.round(performance.now() - start);
+    latencyEl.textContent = latency + 'ms';
+    badge.className = 'badge fail'; badge.textContent = 'FAIL';
+    detailsEl.innerHTML = `<div class="err-msg">${err.message} — is the backend running and reachable at this URL?</div>`;
+    return { ok: false, latency, data: null };
+  }
+}
+
+function fmtPct(v) { return (v === undefined || v === null) ? '—' : (Math.round(v * 1000) / 10) + '%'; }
+
+function renderSnapshot(sentimentData, signalsData) {
+  const m = sentimentData || {};
+  document.getElementById('snapRegime').textContent = m.market_regime || '—';
+  document.getElementById('snapSentiment').textContent = m.overall_sentiment !== undefined ? m.overall_sentiment : '—';
+  const sentEl = document.getElementById('snapSentiment');
+  sentEl.className = 'snap-value ' + (m.overall_sentiment > 0.55 ? 'up' : (m.overall_sentiment < 0.45 ? 'down' : ''));
+  document.getElementById('snapCounts').textContent = `${m.bullish_count ?? '—'} / ${m.bearish_count ?? '—'}`;
+  document.getElementById('snapRisk').textContent = m.risk_assessment || '—';
+  document.getElementById('snapUpdated').textContent = 'as of ' + new Date().toLocaleTimeString();
+
+  const list = document.getElementById('signalList');
+  const arr = Array.isArray(signalsData) ? signalsData : (signalsData && signalsData.signals) || [];
+  if (!arr.length) {
+    list.innerHTML = '<div class="empty-note">No signals returned — pipeline may not have run yet today. Trigger it from n8n or POST /api/run_pipeline.</div>';
+    return;
+  }
+  list.innerHTML = arr.slice(0, 6).map(s => {
+    const tag = (s.signal || 'HOLD').includes('BUY') ? 'buy' : ((s.signal || '').includes('SELL') ? 'sell' : 'hold');
+    return `<div class="signal-row">
+      <span class="signal-ticker">${s.ticker || '—'}</span>
+      <span class="signal-tag ${tag}">${s.signal || 'HOLD'}</span>
+      <span class="signal-conf">${fmtPct(s.confidence)} confidence</span>
+    </div>`;
+  }).join('');
+}
+
+async function runAll() {
+  const baseUrl = document.getElementById('baseUrl').value.trim();
+  if (!baseUrl) return;
+  document.getElementById('linkDocs').href = baseUrl.replace(/\/$/, '') + '/docs';
+  renderSkeleton();
+
+  const results = {};
+  for (const c of CHECKS) { results[c.id] = await runCheck(c, baseUrl); }
+
+  renderSnapshot(results.sentiment && results.sentiment.data, results.signals && results.signals.data);
+
+  const allResults = Object.values(results);
+  const failed = allResults.filter(r => !r.ok).length;
+  const dot = document.getElementById('overallDot');
+  const text = document.getElementById('overallText');
+  if (failed === 0) { dot.className = 'dot ok'; text.textContent = 'All systems operational'; }
+  else { dot.className = 'dot err'; text.textContent = failed + ' of ' + allResults.length + ' checks failing'; }
+}
+
+function toggleAuto() {
+  const btn = document.getElementById('autoBtn');
+  if (autoTimer) {
+    clearInterval(autoTimer); autoTimer = null;
+    btn.textContent = 'Auto-refresh: off'; btn.classList.remove('active');
+  } else {
+    autoTimer = setInterval(runAll, 30000);
+    btn.textContent = 'Auto-refresh: 30s'; btn.classList.add('active');
+  }
+}
+
+renderSkeleton();
+runAll();
+</script>
+</body>
+</html>

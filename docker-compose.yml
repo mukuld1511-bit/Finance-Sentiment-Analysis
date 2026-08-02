@@ -1,0 +1,99 @@
+services:
+  # ============================================================================
+  # Service A: FastAPI Stock Market Sentiment Analysis Engine
+  # ============================================================================
+  fastapi-sentiment:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi_sentiment_app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres_secure_password_2026@postgres:5432/sentiment
+      - LOG_LEVEL=INFO
+      - API_KEY=secret_sentiment_api_key_2026
+      - USE_GPU=false
+      - FINBERT_MODEL_CACHE=/app/models
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sentiment_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # Service B: PostgreSQL Database (Self-Hosted)
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_sentiment_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_password_2026
+      - POSTGRES_DB=sentiment
+    restart: always
+    networks:
+      - sentiment_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sentiment"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Service C: n8n Workflow Automation Engine
+  # ============================================================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n_pipeline_automation
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/home/node/workflows
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fastapi-sentiment:
+        condition: service_started
+    networks:
+      - sentiment_network
+
+# ============================================================================
+# Persistent Volume Declarations
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  n8n_data:
+    driver: local
+  models:
+    driver: local
+
+# ============================================================================
+# Custom Isolated Bridge Network
+# ============================================================================
+networks:
+  sentiment_network:
+    driver: bridge

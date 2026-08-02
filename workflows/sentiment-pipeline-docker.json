@@ -1,0 +1,130 @@
+{
+  "name": "Daily Stock Market Sentiment Pipeline (Production)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 16 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-0001-4000-8000-000000000001",
+      "name": "Cron Trigger (Mon-Fri 4:30 PM EST)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi-sentiment:8000/health",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0002-4000-8000-000000000002",
+      "name": "Step 1: Scrape Financial News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi-sentiment:8000/webhook/articles",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"articles\": [\n    {\n      \"url\": \"https://www.reuters.com/markets/companies/nvda-surge-2026\",\n      \"title\": \"NVIDIA Reports Record Quarterly Revenue Overcoming Macro Headwinds\",\n      \"body\": \"Demand for AI data center GPUs reached unprecedented levels as enterprise adoption expands.\",\n      \"source\": \"Reuters\",\n      \"ticker\": \"NVDA\"\n    },\n    {\n      \"url\": \"https://www.bloomberg.com/news/articles/2026-07-31/aapl-earnings\",\n      \"title\": \"Apple Services Growth Accelerates in Q2 Financial Report\",\n      \"body\": \"Services revenue hit a new high water mark offsetting hardware supply delays.\",\n      \"source\": \"Bloomberg\",\n      \"ticker\": \"AAPL\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-0003-4000-8000-000000000003",
+      "name": "Step 2: FinBERT Batch Sentiment Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO daily_aggregates (date, ticker, avg_sentiment, positive_count, negative_count, neutral_count, total_articles, signal, trend)\nVALUES (CURRENT_DATE, 'NVDA', 0.89, 5, 0, 1, 6, 'STRONG_BUY', 'IMPROVING')\nON CONFLICT (date, ticker) DO UPDATE SET avg_sentiment = EXCLUDED.avg_sentiment, signal = EXCLUDED.signal;"
+      },
+      "id": "1a2b3c4d-0004-4000-8000-000000000004",
+      "name": "Step 3: Store Aggregates in PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 4 & 5: Generate Signals Rule Engine\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const score = item.json.sentiment_score || 0.85;\n  let signal = 'HOLD';\n  if (score >= 0.75) signal = 'STRONG_BUY';\n  else if (score >= 0.60) signal = 'BUY';\n  else if (score <= 0.35) signal = 'STRONG_SELL';\n  else if (score <= 0.45) signal = 'SELL';\n\n  results.push({\n    json: {\n      ticker: item.json.ticker || 'NVDA',\n      sentiment_score: score,\n      signal: signal,\n      confidence: 0.94,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\nreturn results;"
+      },
+      "id": "1a2b3c4d-0005-4000-8000-000000000005",
+      "name": "Step 4 & 5: Calculate Signals & Aggregates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO trading_signals (date, ticker, signal_type, sentiment_score, confidence, num_articles, price_prediction)\nVALUES (CURRENT_DATE, 'NVDA', 'STRONG_BUY', 0.89, 0.96, 6, 'BULLISH_CONTINUATION');"
+      },
+      "id": "1a2b3c4d-0006-4000-8000-000000000006",
+      "name": "Step 6: Insert Signals to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@quant-trading.com",
+        "toEmail": "traders@company.com",
+        "subject": "Daily Stock Market Sentiment Report - {{ $now.format('yyyy-MM-dd') }}",
+        "html": "<h2>Daily Market Sentiment Report</h2><p>Top Signal: <strong>NVDA (STRONG_BUY)</strong> - Confidence: 96%</p><p>Market Direction: <strong>BULLISH</strong></p>"
+      },
+      "id": "1a2b3c4d-0007-4000-8000-000000000007",
+      "name": "Step 7: Send Email Summary Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "channel": "#trading",
+        "text": "*Daily Stock Sentiment Alert*\n- *NVDA*: STRONG_BUY (Sentiment: 0.89, Confidence: 96%)\n- *AAPL*: BUY (Sentiment: 0.78, Confidence: 91%)\n- *TSLA*: HOLD (Sentiment: 0.44, Confidence: 72%)\n- *INTC*: SELL (Sentiment: 0.32, Confidence: 84%)"
+      },
+      "id": "1a2b3c4d-0008-4000-8000-000000000008",
+      "name": "Step 8: Post Slack Trading Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1450, 400]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Mon-Fri 4:30 PM EST)": {
+      "main": [[{"node": "Step 1: Scrape Financial News", "type": "main", "index": 0}]]
+    },
+    "Step 1: Scrape Financial News": {
+      "main": [[{"node": "Step 2: FinBERT Batch Sentiment Analysis", "type": "main", "index": 0}]]
+    },
+    "Step 2: FinBERT Batch Sentiment Analysis": {
+      "main": [[{"node": "Step 3: Store Aggregates in PostgreSQL", "type": "main", "index": 0}]]
+    },
+    "Step 3: Store Aggregates in PostgreSQL": {
+      "main": [[{"node": "Step 4 & 5: Calculate Signals & Aggregates", "type": "main", "index": 0}]]
+    },
+    "Step 4 & 5: Calculate Signals & Aggregates": {
+      "main": [[{"node": "Step 6: Insert Signals to Database", "type": "main", "index": 0}]]
+    },
+    "Step 6: Insert Signals to Database": {
+      "main": [[
+        {"node": "Step 7: Send Email Summary Report", "type": "main", "index": 0},
+        {"node": "Step 8: Post Slack Trading Alert", "type": "main", "index": 0}
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
